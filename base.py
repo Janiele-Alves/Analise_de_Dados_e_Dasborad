@@ -47,17 +47,6 @@ else:
     if pais_selecionado != "Todos os Países":
         dados_filtrados = dados_filtrados[dados_filtrados['Country/Region'] == pais_selecionado]
 
-     # Slider para escolher entre dados diários e anuais
-    tipo_agrupamento = st.radio("Escolha o tipo de visualização", ['Diária', 'Anual'])
-
-    if tipo_agrupamento == 'Anual':
-        dados_filtrados['Ano'] = dados_filtrados['Date'].dt.year
-        dados_agrupados = dados_filtrados.groupby(['Country/Region', 'Ano']).sum(numeric_only=True).reset_index()
-        x_axis = 'Ano'
-    else:
-        dados_agrupados = dados_filtrados
-        x_axis = 'Date'
-
     # Métricas principais
     col1, col2, col3, col4 = st.columns(4)
     with col1:
