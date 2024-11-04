@@ -3,7 +3,6 @@ import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
 
-# Título do Dashboard
 st.markdown("<h1 style='color:#67ba61; text-align:center;'>DASHBOARD COVID-19</h1>", unsafe_allow_html=True)
 st.markdown("<h2 style='color:#67ba61; text-align:center;'>Jan 2020 - Jun 2022</h2>", unsafe_allow_html=True)
 
@@ -22,28 +21,42 @@ else:
     # Conversão da coluna de data
     full_grouped['Date'] = pd.to_datetime(full_grouped['Date'])
 
+    # Interligar as bases de dados nas colunas de país e região
+    dados_combinados = pd.merge(full_grouped, worldometer_data, on="Country/Region", how="inner")
+
     # Selecionar colunas numéricas para análise
-    numeric_columns = full_grouped.select_dtypes(include='number').columns
+    numeric_columns = dados_combinados.select_dtypes(include='number').columns
 
     # Seletor de datas
     col1, col2 = st.columns(2)
     with col1:
-        data_inicio = st.date_input("Selecione a data de início", value=full_grouped['Date'].min())
+        data_inicio = st.date_input("Selecione a data de início", value=dados_combinados['Date'].min())
     with col2:
-        data_fim = st.date_input("Selecione a data de fim", value=full_grouped['Date'].max())
+        data_fim = st.date_input("Selecione a data de fim", value=dados_combinados['Date'].max())
 
     # Filtragem dos dados
-    dados_filtrados = full_grouped[(full_grouped['Date'] >= pd.to_datetime(data_inicio)) & 
-                                   (full_grouped['Date'] <= pd.to_datetime(data_fim))]
+    dados_filtrados = dados_combinados[(dados_combinados['Date'] >= pd.to_datetime(data_inicio)) & 
+                                       (dados_combinados['Date'] <= pd.to_datetime(data_fim))]
 
     # Filtro por país
     st.markdown("<h4 style='color:#67ba61;'>Filtrar por país:</h4>", unsafe_allow_html=True)
-    pais_opcoes = ["Todos os Países"] + sorted(full_grouped['Country/Region'].unique())
+    pais_opcoes = ["Todos os Países"] + sorted(dados_combinados['Country/Region'].unique())
     pais_selecionado = st.selectbox("País", options=pais_opcoes, index=0)
 
     # Filtrando dados com base no país selecionado
     if pais_selecionado != "Todos os Países":
         dados_filtrados = dados_filtrados[dados_filtrados['Country/Region'] == pais_selecionado]
+
+     # Slider para escolher entre dados diários e anuais
+    tipo_agrupamento = st.radio("Escolha o tipo de visualização", ['Diária', 'Anual'])
+
+    if tipo_agrupamento == 'Anual':
+        dados_filtrados['Ano'] = dados_filtrados['Date'].dt.year
+        dados_agrupados = dados_filtrados.groupby(['Country/Region', 'Ano']).sum(numeric_only=True).reset_index()
+        x_axis = 'Ano'
+    else:
+        dados_agrupados = dados_filtrados
+        x_axis = 'Date'
 
     # Métricas principais
     col1, col2, col3, col4 = st.columns(4)
@@ -75,7 +88,6 @@ else:
             labels_pizza = ['Sem Dados']
             values_pizza = [1]
 
-    # Criar o gráfico de pizza
     fig_pizza = px.pie(
         names=labels_pizza,
         values=values_pizza,
@@ -95,60 +107,28 @@ else:
                                       color_discrete_sequence=['#67ba61'])
     st.plotly_chart(fig_top_paises_filtrados, use_container_width=True)
 
-    # Agrupar dados para gráfico de barras empilhadas
-    casos_por_pais = dados_filtrados.groupby('Country/Region')['Confirmed'].sum().reset_index()
-    mortes_por_pais = dados_filtrados.groupby('Country/Region')['Deaths'].sum().reset_index()
-    recuperados_por_pais = dados_filtrados.groupby('Country/Region')['Recovered'].sum().reset_index()
-    mortes_por_pais['Taxa de Mortalidade (%)'] = (mortes_por_pais['Deaths'] / casos_por_pais['Confirmed'] * 100).fillna(0)
-
-    # Combinar os dados em um DataFrame único para o gráfico
-    dados_grafico = pd.merge(casos_por_pais, mortes_por_pais, on='Country/Region')
-    dados_grafico = pd.merge(dados_grafico, recuperados_por_pais, on='Country/Region')
-    dados_grafico = dados_grafico.rename(columns={'Confirmed': 'Casos Confirmados', 'Taxa de Mortalidade (%)': 'Taxa de Mortalidade (%)', 'Recovered': 'Recuperados'})
-
-    # Criar o gráfico de barras empilhadas
+    # Gráfico de barras empilhadas: Casos Confirmados, Mortes e Recuperações
+    st.markdown("<h4 style='color:#67ba61;'>Casos Confirmados, Mortes e Recuperações por País</h4>", unsafe_allow_html=True)
     fig_barras_empilhadas = go.Figure(data=[
         go.Bar(
             name='Casos Confirmados',
-            x=dados_grafico['Country/Region'],
-            y=dados_grafico['Casos Confirmados'],
-            marker_color='#a8e6a3',
-            text=dados_grafico['Casos Confirmados'],
-            textposition='inside',
-            hovertemplate='<b>País:</b> %{x}<br>' +
-                          '<b>Casos Confirmados:</b> %{y}<br>' +
-                          '<b>Mortes:</b> %{customdata[0]}<br>' +
-                          '<b>Recuperados:</b> %{customdata[1]}<br>' +
-                          '<extra></extra>',
-            customdata=dados_grafico[['Deaths', 'Recuperados']].values,
-            width=5
+            x=dados_filtrados['Country/Region'],
+            y=dados_filtrados['Confirmed'],
+            marker_color='#a8e6a3'
         ),
         go.Bar(
             name='Mortes',
-            x=dados_grafico['Country/Region'],
-            y=dados_grafico['Deaths'],
-            marker_color='#d9534f',
-            text=dados_grafico['Deaths'],
-            textposition='inside',
-            hovertemplate='<b>País:</b> %{x}<br>' +
-                          '<b>Mortes:</b> %{y}<br>' +
-                          '<extra></extra>',
-            width=5
+            x=dados_filtrados['Country/Region'],
+            y=dados_filtrados['Deaths'],
+            marker_color='#d9534f'
         ),
         go.Bar(
             name='Recuperados',
-            x=dados_grafico['Country/Region'],
-            y=dados_grafico['Recuperados'],
-            marker_color='#5bc0de',
-            text=dados_grafico['Recuperados'],
-            textposition='inside',
-            hovertemplate='<b>País:</b> %{x}<br>' +
-                          '<b>Recuperados:</b> %{y}<br>' +
-                          '<extra></extra>',
-            width=5
+            x=dados_filtrados['Country/Region'],
+            y=dados_filtrados['Recovered'],
+            marker_color='#5bc0de'
         )
     ])
-
     fig_barras_empilhadas.update_layout(
         title='Casos Confirmados, Mortes e Recuperações por País',
         xaxis_title='País',
@@ -159,19 +139,62 @@ else:
         font=dict(color='white'),
         legend=dict(title='Métrica')
     )
-
-    # Exibir o gráfico de barras empilhadas
     st.plotly_chart(fig_barras_empilhadas, use_container_width=True)
+
+     # Filtrar os dados de worldometer_data com base no país selecionado
+    if pais_selecionado != "Todos os Países":
+        dados_filtrados = worldometer_data[worldometer_data['Country/Region'] == pais_selecionado]
+    else:
+        dados_filtrados = worldometer_data
+
+    # Calcular a soma da população e dos testes para o país selecionado
+    total_populacao = dados_filtrados['Population'].sum()
+    total_testes = dados_filtrados['TotalTests'].sum()
+
+    # Criar um DataFrame para o gráfico de pizza
+    dados_pizza = pd.DataFrame({
+        'Categoria': ['População Total', 'Total de Testes'],
+        'Quantidade': [total_populacao, total_testes]
+    })
+
+    # Gráfico de Pizza
+    fig_pizza = px.pie(
+        dados_pizza,
+        names='Categoria',
+        values='Quantidade',
+        title=f'Distribuição da População e Testes Realizados em {pais_selecionado}',
+        color_discrete_sequence=['#67ba61', '#d9534f']
+    )
+
+    # Exibir o gráfico no Streamlit
+    st.plotly_chart(fig_pizza, use_container_width=True)
 
     # Gráfico de Casos Confirmados Cumulativos ao Longo do Tempo
     st.markdown("<h4 style='color:#67ba61; text-align:center;'>Casos Confirmados Cumulativos ao Longo do Tempo (Filtrado)</h4>", unsafe_allow_html=True)
-    casos_cumulativos = dados_filtrados.groupby('Date')['Confirmed'].sum().reset_index()
-    fig_cumulativo_filtrado = px.line(casos_cumulativos, 
-                                      x='Date', 
-                                      y='Confirmed', 
-                                      labels={'Confirmed': 'Casos Confirmados', 'Date': 'Data'},
-                                      color_discrete_sequence=['#67ba61'])
-    st.plotly_chart(fig_cumulativo_filtrado)
+
+    # Filtrar os dados de full_grouped com base no país selecionado
+    if pais_selecionado != "Todos os Países":
+        dados_filtrados = full_grouped[full_grouped['Country/Region'] == pais_selecionado]
+    else:
+        dados_filtrados = full_grouped
+
+    # Verifica se a coluna 'Date' está presente
+    if 'Date' in dados_filtrados.columns:
+        casos_cumulativos = dados_filtrados.groupby('Date')['Confirmed'].sum().reset_index()
+
+        # Criar o gráfico de linha
+        fig_cumulativo_filtrado = px.line(
+            casos_cumulativos,
+            x='Date',
+            y='Confirmed',
+            labels={'Confirmed': 'Casos Confirmados', 'Date': 'Data'},
+            color_discrete_sequence=['#67ba61']
+        )
+        
+        # Exibir o gráfico no Streamlit
+        st.plotly_chart(fig_cumulativo_filtrado, use_container_width=True)
+    else:
+        st.error("A coluna 'Date' não foi encontrada nos dados filtrados. Verifique se os dados foram carregados corretamente.")
 
     # Mapa de Casos de COVID-19 por País
     st.markdown("<h4 style='color:#67ba61; text-align:center;'>Casos de COVID-19 por País (Filtrado)</h4>", unsafe_allow_html=True)
@@ -198,3 +221,4 @@ else:
     st.plotly_chart(fig_mapa_filtrado, use_container_width=True)
 
     st.markdown("<p style='color:#67ba61; text-align:center;'>Dashboard de COVID-19 gerado com base no intervalo de datas e país filtrados.</p>", unsafe_allow_html=True)
+
